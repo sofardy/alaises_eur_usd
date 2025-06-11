@@ -8,6 +8,7 @@
 
 import pandas as pd
 import numpy as np
+import os
 from datetime import datetime, timedelta
 import warnings
 
@@ -25,25 +26,39 @@ class LiquidityAnalyzer:
         """Завантаження та попередня обробка даних"""
         print(f"Завантажую дані з файлу: {file_path}")
         
-        # Читаємо CSV файл
-        df = pd.read_csv(file_path, header=None, names=['Date', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
-        
-        # Об'єднання дати і часу
-        df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], format='%Y.%m.%d %H:%M')
-        
-        # Переведення у UTC+3
-        df['Datetime'] = df['Datetime'] + pd.Timedelta(hours=3)
-        
-        # Залишаємо тільки потрібні колонки
-        df = df[['Datetime', 'Open', 'High', 'Low', 'Close']].copy()
-        
-        # Сортуємо по даті
-        df = df.sort_values('Datetime').reset_index(drop=True)
-        
-        print(f"Завантажено {len(df)} записів")
-        print(f"Період: з {df['Datetime'].min()} до {df['Datetime'].max()}")
-        
-        return df
+        try:
+            # Определяем тип файла
+            if file_path.endswith('.xlsx'):
+                # Читаємо XLSX файл
+                df = pd.read_excel(file_path, header=None, names=['Date', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
+            else:
+                # Читаємо CSV файл
+                df = pd.read_csv(file_path, header=None, names=['Date', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
+            
+            if df.empty:
+                print(f"❌ Файл пустой: {file_path}")
+                return None
+            
+            # Об'єднання дати і часу
+            df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], format='%Y.%m.%d %H:%M')
+            
+            # Переведення у UTC+3
+            df['Datetime'] = df['Datetime'] + pd.Timedelta(hours=3)
+            
+            # Залишаємо тільки потрібні колонки
+            df = df[['Datetime', 'Open', 'High', 'Low', 'Close']].copy()
+            
+            # Сортуємо по даті
+            df = df.sort_values('Datetime').reset_index(drop=True)
+            
+            print(f"Завантажено {len(df)} записів")
+            print(f"Період: з {df['Datetime'].min()} до {df['Datetime'].max()}")
+            
+            return df
+            
+        except Exception as e:
+            print(f"❌ Ошибка при загрузке файла {file_path}: {str(e)}")
+            return None
     
     def get_session_data(self, df, date, start_hour, end_hour):
         """Отримати дані для конкретної сесії"""
@@ -534,6 +549,10 @@ class LiquidityAnalyzer:
         
         return pd.DataFrame(results)
     
+    def analyze_data(self, df):
+        """Алиас для analyze_period (для совместимости с BatchLiquidityAnalyzer)"""
+        return self.analyze_period(df)
+    
     def save_results(self, results_df, output_file):
         """Збереження результатів у Excel"""
         print(f"Зберігаю результати у файл: {output_file}")
@@ -601,9 +620,22 @@ def main():
     # Ініціалізація аналізатора
     analyzer = LiquidityAnalyzer()
     
-    # Завантаження даних
-    input_file = "DAT_MT_EURUSD_M1_202505.csv"
+    # Завантаження даних - проверяем сначала в папке files
+    input_file = None
+    if os.path.exists("files/DAT_MT_EURUSD_M1_202505.csv"):
+        input_file = "files/DAT_MT_EURUSD_M1_202505.csv"
+    elif os.path.exists("DAT_MT_EURUSD_M1_202505.csv"):
+        input_file = "DAT_MT_EURUSD_M1_202505.csv"
+    else:
+        print("❌ Файл данных не найден!")
+        print("💡 Используйте batch_analyzer.py для массовой обработки файлов в папке 'files'")
+        return
+    
     df = analyzer.load_data(input_file)
+    
+    if df is None:
+        print("❌ Не удалось загрузить данные")
+        return
     
     # Аналіз
     results = analyzer.analyze_period(df)
@@ -624,6 +656,7 @@ def main():
     print(f"No Sweep: {(results['sweep_type'] == 'No Sweep').sum()}")
     
     print(f"\n✅ Аналіз завершено! Результати збережено у файл: {output_file}")
+    print("💡 Для массовой обработки используйте: python batch_analyzer.py")
 
 
 if __name__ == "__main__":
