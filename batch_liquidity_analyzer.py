@@ -223,7 +223,65 @@ class BatchLiquidityAnalyzer:
         
         print(f"\n📁 Результаты сохранены в папке: {os.path.abspath(self.results_dir)}")
         print(f"🎯 Готово! Все файлы обработаны.")
-
+    
+    def process_all_files(self, input_folder="files", output_folder="results", progress_callback=None):
+        """
+        Метод для совместимости с GUI
+        Обрабатывает все файлы и возвращает путь к сводному отчету
+        """
+        self.files_dir = input_folder
+        self.results_dir = output_folder
+        
+        # Создаем папки если их нет
+        os.makedirs(self.files_dir, exist_ok=True)
+        os.makedirs(self.results_dir, exist_ok=True)
+        
+        # Получаем список файлов
+        files_list = self.get_files_list()
+        
+        if not files_list:
+            raise Exception(f"В папке '{input_folder}' не найдено файлов для обработки")
+        
+        print(f"📊 Найдено файлов для обработки: {len(files_list)}")
+        
+        # Обрабатываем каждый файл
+        for i, file_path in enumerate(files_list, 1):
+            filename = os.path.basename(file_path)
+            
+            # Вызываем callback если есть
+            if progress_callback:
+                progress_callback(i, len(files_list), filename)
+            
+            print(f"📁 Обработка файла: {filename}")
+            
+            try:
+                # Обрабатываем файл
+                result = self.process_single_file(file_path)
+                if result:
+                    print(f"✅ Успешно обработан: {filename}")
+                else:
+                    self.failed_files.append({
+                        'input_file': file_path,
+                        'error': 'Неизвестная ошибка при обработке'
+                    })
+                    print(f"❌ Ошибка при обработке: {filename}")
+                    
+            except Exception as e:
+                error_msg = str(e)
+                self.failed_files.append({
+                    'input_file': file_path,
+                    'error': error_msg
+                })
+                print(f"❌ Ошибка при обработке {filename}: {error_msg}")
+        
+        # Создаем сводный отчет
+        summary_path = self.create_summary_report()
+        
+        print(f"🎉 Массовая обработка завершена!")
+        print(f"✅ Успешно: {len(self.processed_files)} файлов")
+        print(f"❌ Ошибки: {len(self.failed_files)} файлов")
+        
+        return summary_path
 
 def main():
     """Главная функция для запуска массовой обработки"""
