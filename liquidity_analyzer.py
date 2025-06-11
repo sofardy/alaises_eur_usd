@@ -252,32 +252,62 @@ class LiquidityAnalyzer:
             max_after_mid = after_mid_data['High'].max()
             return 'Yes' if max_after_mid > (asia_mid + self.pip_size) else 'No'
     
-    def calculate_extensions(self, df, sweep_time, sweep_price, sweep_high, sweep_low, asia_range):
-        """Розрахунок розширень після sweep"""
-        if sweep_time is None or sweep_price is None or asia_range == 0:
+    def calculate_extensions(self, df, date, sweep_time, sweep_price, sweep_high, sweep_low, asia_range):
+        """Розрахунок розширень після sweep або від початку Лондону"""
+        if asia_range == 0:
             return 0, 0, None, None, 0, 0
             
-        # Дані після sweep до 15:00
-        london_end = sweep_time.replace(hour=15, minute=0, second=0, microsecond=0)
-        after_sweep_data = df[(df['Datetime'] > sweep_time) & (df['Datetime'] <= london_end)]
-        
-        if after_sweep_data.empty:
-            return 0, 0, None, None, 0, 0
+        # Якщо є sweep - рахуємо від sweep
+        if sweep_time is not None and sweep_price is not None:
+            # Дані після sweep до 15:00
+            london_end = sweep_time.replace(hour=15, minute=0, second=0, microsecond=0)
+            after_sweep_data = df[(df['Datetime'] > sweep_time) & (df['Datetime'] <= london_end)]
             
-        max_high = after_sweep_data['High'].max()
-        min_low = after_sweep_data['Low'].min()
-        
-        # Час досягнення максимуму і мінімуму
-        max_time = after_sweep_data[after_sweep_data['High'] == max_high]['Datetime'].iloc[0]
-        min_time = after_sweep_data[after_sweep_data['Low'] == min_low]['Datetime'].iloc[0]
-        
-        # Розширення в пунктах
-        if sweep_high:
-            extension_pips = (max_high - sweep_price) / self.pip_size
-            reverse_pips = (sweep_price - min_low) / self.pip_size
+            if after_sweep_data.empty:
+                return 0, 0, None, None, 0, 0
+                
+            max_high = after_sweep_data['High'].max()
+            min_low = after_sweep_data['Low'].min()
+            
+            # Час досягнення максимуму і мінімуму
+            max_time = after_sweep_data[after_sweep_data['High'] == max_high]['Datetime'].iloc[0]
+            min_time = after_sweep_data[after_sweep_data['Low'] == min_low]['Datetime'].iloc[0]
+            
+            # Розширення в пунктах від sweep price
+            if sweep_high:
+                extension_pips = (max_high - sweep_price) / self.pip_size
+                reverse_pips = (sweep_price - min_low) / self.pip_size
+            else:
+                extension_pips = (sweep_price - min_low) / self.pip_size
+                reverse_pips = (max_high - sweep_price) / self.pip_size
+                
         else:
-            extension_pips = (sweep_price - min_low) / self.pip_size
-            reverse_pips = (max_high - sweep_price) / self.pip_size
+            # Якщо немає sweep - рахуємо від початку Лондону (10:00)
+            london_data = self.get_session_data(df, date, 10, 15)  # 10:00 - 15:00
+            
+            if london_data.empty:
+                return 0, 0, None, None, 0, 0
+                
+            london_open = london_data.iloc[0]['Open']  # Ціна на 10:00
+            max_high = london_data['High'].max()
+            min_low = london_data['Low'].min()
+            
+            # Час досягнення максимуму і мінімуму
+            max_time = london_data[london_data['High'] == max_high]['Datetime'].iloc[0]
+            min_time = london_data[london_data['Low'] == min_low]['Datetime'].iloc[0]
+            
+            # Розширення в пунктах від London Open (10:00)
+            up_move = max_high - london_open
+            down_move = london_open - min_low
+            
+            if up_move > down_move:
+                # Основний рух вгору
+                extension_pips = up_move / self.pip_size
+                reverse_pips = down_move / self.pip_size
+            else:
+                # Основний рух вниз
+                extension_pips = down_move / self.pip_size
+                reverse_pips = up_move / self.pip_size
             
         # Розширення у відсотках від Asia Range
         extension_percent = (extension_pips * self.pip_size / asia_range) * 100
@@ -437,7 +467,7 @@ class LiquidityAnalyzer:
         # Розширення
         extension_pips, extension_percent, max_time, min_time, reverse_pips, reverse_percent = \
             self.calculate_extensions(
-                df, sweep_time, sweep_price, london_sweep_high, london_sweep_low, asia_range
+                df, date, sweep_time, sweep_price, london_sweep_high, london_sweep_low, asia_range
             )
         
         # Retests
@@ -461,6 +491,8 @@ class LiquidityAnalyzer:
             'frankfurt_low_time': frankfurt_low_time.strftime('%H:%M') if frankfurt_low_time else None,
             'london_sweep_high': 'Yes' if london_sweep_high else 'No',
             'london_sweep_low': 'Yes' if london_sweep_low else 'No',
+            'london_sweep_asia_high_time': london_high_time.strftime('%H:%M') if london_high_time and london_sweep_high else None,
+            'london_sweep_asia_low_time': london_low_time.strftime('%H:%M') if london_low_time and london_sweep_low else None,
             'london_high_time': london_high_time.strftime('%H:%M') if london_high_time else None,
             'london_low_time': london_low_time.strftime('%H:%M') if london_low_time else None,
             'sweep_type': sweep_type,
