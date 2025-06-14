@@ -3,7 +3,23 @@
 """
 Аналіз ліквідності EUR/USD по торгових сесіях
 Автор: GitHub Copilot
-Версія: 2.0 - з конвертацією UTC → Europe/Kyiv (з урахуванням DST)
+Версія: 2.0     def calculate_pdh_pdl(self, df, date):
+        """Розрахунок PDH/PDL (попередній день)"""
+        # Получаем предыдущий день
+        if isinstance(date, pd.Timestamp):
+            prev_date = date - pd.Timedelta(days=1)
+        else:
+            prev_date = pd.Timestamp(date) - pd.Timedelta(days=1)
+            
+        prev_day_data = self.get_session_data(df, prev_date, 0, 24)  # Весь попередний день
+        
+        if prev_day_data.empty:
+            return None, None
+            
+        pdh = prev_day_data['High'].max()
+        pdl = prev_day_data['Low'].min()
+        
+        return pdh, pdlTC → Europe/Kyiv (з урахуванням DST)
 """
 
 import pandas as pd
@@ -102,23 +118,13 @@ class LiquidityAnalyzer:
                 date = date.tz_localize(df['Datetime'].dt.tz)
             
             session_start = date.replace(hour=start_hour, minute=0, second=0, microsecond=0)
-            
-            # Обрабатываем случай end_hour = 24 (конец дня)
-            if end_hour == 24:
-                session_end = date.replace(hour=23, minute=59, second=59, microsecond=999999)
-            else:
-                session_end = date.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+            session_end = date.replace(hour=end_hour, minute=0, second=0, microsecond=0)
         else:
             # Данные без timezone
             if isinstance(date, pd.Timestamp) and date.tz is not None:
                 date = date.tz_localize(None)
             session_start = pd.Timestamp(date).replace(hour=start_hour, minute=0, second=0, microsecond=0)
-            
-            # Обрабатываем случай end_hour = 24 (конец дня)
-            if end_hour == 24:
-                session_end = pd.Timestamp(date).replace(hour=23, minute=59, second=59, microsecond=999999)
-            else:
-                session_end = pd.Timestamp(date).replace(hour=end_hour, minute=0, second=0, microsecond=0)
+            session_end = pd.Timestamp(date).replace(hour=end_hour, minute=0, second=0, microsecond=0)
         
         # Якщо сесія переходить на наступний день
         if end_hour < start_hour:
@@ -142,13 +148,14 @@ class LiquidityAnalyzer:
     
     def calculate_pdh_pdl(self, df, date):
         """Розрахунок PDH/PDL (попередній день)"""
-        # Получаем предыдущий день
-        if isinstance(date, pd.Timestamp):
-            prev_date = date - pd.Timedelta(days=1)
+        # Получаем timezone из данных (если есть)
+        if df['Datetime'].dt.tz is not None:
+            tz = df['Datetime'].dt.tz
+            prev_date = pd.Timestamp(date).tz_localize(tz) - pd.Timedelta(days=1)
         else:
             prev_date = pd.Timestamp(date) - pd.Timedelta(days=1)
             
-        prev_day_data = self.get_session_data(df, prev_date, 0, 24)  # Весь попередний день
+        prev_day_data = self.get_session_data(df, prev_date, 0, 24)  # Весь попередній день
         
         if prev_day_data.empty:
             return None, None
