@@ -27,35 +27,51 @@ class LiquidityAnalyzer:
         print(f"Завантажую дані з файлу: {file_path}")
         
         try:
-            # Определяем тип файла
+            # Определяем, есть ли заголовки в файле
+            with open(file_path, 'r', encoding='utf-8') as f:
+                first_line = f.readline().strip().lower()
+            has_header = ('date' in first_line and 'time' in first_line)
+
             if file_path.endswith('.xlsx'):
-                # Читаємо XLSX файл
-                df = pd.read_excel(file_path, header=None, names=['Date', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                # Для Excel завжди header=0 (зазвичай є заголовки)
+                df = pd.read_excel(file_path)
             else:
-                # Читаємо CSV файл
-                df = pd.read_csv(file_path, header=None, names=['Date', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
-            
+                if has_header:
+                    df = pd.read_csv(file_path)
+                else:
+                    df = pd.read_csv(file_path, header=None, names=['Date', 'Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
+
             if df.empty:
                 print(f"❌ Файл пустой: {file_path}")
                 return None
-            
-            # Об'єднання дати і часу
-            df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], format='%Y.%m.%d %H:%M')
-            
+
+            # Об'єднання дати і часу з підтримкою різних форматів
+            parse_success = False
+            for date_fmt in ['%Y.%m.%d %H:%M', '%Y-%m-%d %H:%M', '%Y.%m.%d %H:%M:%S', '%Y-%m-%d %H:%M:%S']:
+                try:
+                    df['Datetime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], format=date_fmt)
+                    parse_success = True
+                    break
+                except Exception:
+                    continue
+            if not parse_success:
+                print(f"❌ Ошибка при разборе дати/времени: не удалось определить формат даты/времени")
+                return None
+
             # Переведення у UTC+3
             df['Datetime'] = df['Datetime'] + pd.Timedelta(hours=3)
-            
+
             # Залишаємо тільки потрібні колонки
             df = df[['Datetime', 'Open', 'High', 'Low', 'Close']].copy()
-            
+
             # Сортуємо по даті
             df = df.sort_values('Datetime').reset_index(drop=True)
-            
+
             print(f"Завантажено {len(df)} записів")
             print(f"Період: з {df['Datetime'].min()} до {df['Datetime'].max()}")
-            
+
             return df
-            
+
         except Exception as e:
             print(f"❌ Ошибка при загрузке файла {file_path}: {str(e)}")
             return None
